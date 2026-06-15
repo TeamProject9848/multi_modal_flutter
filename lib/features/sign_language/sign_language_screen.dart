@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../models/sign_translation.dart';
+import '../../providers/app_providers.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/live_camera_preview.dart';
 
@@ -10,6 +12,14 @@ class SignLanguageScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<String>(activeModeProvider, (previous, next) {
+      if (next == 'danger') {
+        if (context.mounted) {
+          context.go('/');
+        }
+      }
+    });
+
     final history = [
       SignTranslation(
         text: 'I need help',

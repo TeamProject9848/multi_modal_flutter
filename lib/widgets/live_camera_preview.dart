@@ -8,18 +8,21 @@ import '../providers/app_providers.dart';
 import '../services/webrtc_service.dart';
 
 class LiveCameraPreview extends ConsumerWidget {
-  const LiveCameraPreview({super.key});
+  const LiveCameraPreview({super.key, this.height = 220});
+
+  final double? height;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _Preview(service: ref.watch(webrtcServiceProvider));
+    return _Preview(service: ref.watch(webrtcServiceProvider), height: height);
   }
 }
 
 class _Preview extends StatefulWidget {
-  const _Preview({required this.service});
+  const _Preview({required this.service, this.height});
 
   final WebRTCService service;
+  final double? height;
 
   @override
   State<_Preview> createState() => _PreviewState();
@@ -67,7 +70,7 @@ class _PreviewState extends State<_Preview> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: SizedBox(
-        height: 220,
+        height: widget.height,
         width: double.infinity,
         child: _renderer.srcObject == null
             ? const ColoredBox(

@@ -19,7 +19,7 @@ class GlassCard extends StatelessWidget {
     return Card(
       elevation: elevation,
       shape: RoundedRectangleBorder(borderRadius: borderRadius),
-      color: Colors.white.withOpacity(0.06),
+      color: Colors.white.withValues(alpha: 0.06),
       child: Padding(padding: padding, child: child),
     );
   }

@@ -7,6 +7,9 @@ import '../services/controller_session.dart';
 import '../services/websocket_service.dart';
 import '../services/webrtc_service.dart';
 
+import 'active_mode_provider.dart';
+export 'active_mode_provider.dart';
+
 final preferencesProvider = FutureProvider<SharedPreferences>((ref) async {
   return SharedPreferences.getInstance();
 });
@@ -39,6 +42,12 @@ final websocketServiceProvider = Provider<WebSocketService>((ref) {
 final connectionStatusProvider = StateProvider<ConnectionStatus>(
   (ref) => ConnectionStatus.disconnected,
 );
+
+/// Hazard state reported by the backend (e.g. "Alert", "Idle").
+final hazardStateProvider = StateProvider<String>((ref) => 'Idle');
+
+/// Frame age reported by the backend.
+final frameAgeProvider = StateProvider<String>((ref) => '—');
 final webrtcServiceProvider = Provider<WebRTCService>((ref) {
   final service = WebRTCService(
     stunServer: ref.watch(webrtcStunServerProvider),
@@ -59,6 +68,15 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
     controllerHttpBase: 'http://$ip:$port',
     onStatusChanged: (status) {
       ref.read(connectionStatusProvider.notifier).state = status;
+    },
+    onHazardStateChanged: (state) {
+      ref.read(hazardStateProvider.notifier).state = state;
+    },
+    onModeOverride: (mode) {
+      ref.read(activeModeProvider.notifier).state = mode;
+    },
+    onFrameAgeChanged: (age) {
+      ref.read(frameAgeProvider.notifier).state = age;
     },
   );
   Future.microtask(() {

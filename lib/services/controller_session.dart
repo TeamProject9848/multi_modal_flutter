@@ -14,6 +14,9 @@ class ControllerSession {
     required this.audioQueue,
     required this.controllerHttpBase,
     required this.onStatusChanged,
+    this.onHazardStateChanged,
+    this.onModeOverride,
+    this.onFrameAgeChanged,
   });
 
   final WebSocketService webSocket;
@@ -21,6 +24,15 @@ class ControllerSession {
   final AudioQueueManager audioQueue;
   final String controllerHttpBase;
   final ValueChanged<ConnectionStatus> onStatusChanged;
+
+  /// Called when the backend reports a hazard-state change (e.g. "Alert", "Idle").
+  final ValueChanged<String>? onHazardStateChanged;
+
+  /// Called when the backend forces a mode switch (e.g. danger override).
+  final ValueChanged<String>? onModeOverride;
+
+  /// Called when the backend reports a new frame age value.
+  final ValueChanged<String>? onFrameAgeChanged;
 
   StreamSubscription<Map<String, dynamic>>? _messages;
   bool _signaling = false;
@@ -60,6 +72,20 @@ class ControllerSession {
 
   Future<void> _handleMessage(Map<String, dynamic> message) async {
     debugPrint('WS MESSAGE: $message');
+
+    // ── Extract state & frame_age from ANY message ──────────────
+    // The backend may embed these fields in various message types,
+    // not just a dedicated "state" message.
+    final msgState = message['state'];
+    if (msgState is String && msgState.isNotEmpty) {
+      onHazardStateChanged?.call(msgState);
+    }
+    final frameAge = message['frame_age'];
+    if (frameAge != null) {
+      onFrameAgeChanged?.call(frameAge.toString());
+    }
+
+    // ── Type-specific handling ───────────────────────────────────
     switch (message['type']) {
   case 'webrtc_answer':
     final sdp = message['sdp'];
@@ -81,6 +107,10 @@ class ControllerSession {
         priority: AudioPriority.high,
       );
     }
+    final label = _alertLabels[message['key']] ?? 'Alert';
+    onHazardStateChanged?.call(label);
+    // Danger alert overrides whatever mode the UI is in
+    onModeOverride?.call('danger');
     break;
 
   case 'audio':
@@ -119,6 +149,15 @@ class ControllerSession {
     'VEHICLE_NEAR': 'assets/audio/vehicle_alert.mp3',
     'DOG_NEAR': 'assets/audio/dog_alert.mp3',
     'STREAM_LOST': 'assets/audio/danger_alert.mp3',
+  };
+
+  static const _alertLabels = <String, String>{
+    'OBSTACLE_NEAR': 'Alert: Obstacle Near',
+    'OBSTACLE_MID': 'Alert: Obstacle Mid',
+    'PERSON_NEAR': 'Alert: Person Near',
+    'VEHICLE_NEAR': 'Alert: Vehicle Near',
+    'DOG_NEAR': 'Alert: Dog Near',
+    'STREAM_LOST': 'Alert: Stream Lost',
   };
 
   AudioPriority _audioPriority(int controllerPriority) {

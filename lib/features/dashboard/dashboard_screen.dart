@@ -3,19 +3,88 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/connection_status.dart';
-import '../../models/alert_event.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/status_chip.dart';
-import 'package:network_info_plus/network_info_plus.dart';
+import '../../widgets/live_camera_preview.dart';
 
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Ensure controller starts in danger mode by default
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final session = ref.read(controllerSessionProvider);
+      session.webSocket.send({
+        'type': 'set_mode',
+        'mode': 'danger',
+      });
+    });
+  }
+
+  /// Human-readable label for a mode key.
+  String _modeLabel(String mode) {
+    switch (mode) {
+      case 'danger':
+        return 'Danger Detection';
+      case 'sign':
+        return 'Sign Language';
+      case 'face':
+        return 'Face Recognition';
+      case 'caption':
+        return 'Image Captioning';
+      default:
+        return mode;
+    }
+  }
+
+  /// Switch the active mode and notify the controller via WebSocket.
+  void _switchMode(String mode) async {
+    final current = ref.read(activeModeProvider);
+    if (current == mode) return;
+    ref.read(activeModeProvider.notifier).state = mode;
+    final session = ref.read(controllerSessionProvider);
+    session.webSocket.send({
+      'type': 'set_mode',
+      'mode': mode,
+    });
+
+    if (mode == 'sign') {
+      await context.push('/sign');
+      _resetToDanger();
+    } else if (mode == 'face') {
+      await context.push('/face');
+      _resetToDanger();
+    }
+  }
+
+  void _resetToDanger() {
+    if (!mounted) return;
+    ref.read(activeModeProvider.notifier).state = 'danger';
+    final session = ref.read(controllerSessionProvider);
+    session.webSocket.send({
+      'type': 'set_mode',
+      'mode': 'danger',
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final connectionStatus = ref.watch(connectionStatusProvider);
+    final activeMode = ref.watch(activeModeProvider);
+    final hazardState = ref.watch(hazardStateProvider);
+    final isAlert = hazardState.toLowerCase().contains('alert');
+    final frameAge = ref.watch(frameAgeProvider);
     final wsUrl = ref.watch(websocketUrlProvider);
+
+    // Derive controller IP display string
     String controllerIpValue = 'Unknown';
     try {
       final uri = Uri.parse(wsUrl);
@@ -23,281 +92,279 @@ class DashboardScreen extends ConsumerWidget {
     } catch (_) {
       controllerIpValue = wsUrl;
     }
+
     final statusLabel = connectionStatus == ConnectionStatus.connected
         ? 'Connected'
         : connectionStatus == ConnectionStatus.connecting
-        ? 'Connecting'
-        : connectionStatus == ConnectionStatus.reconnecting
-        ? 'Reconnecting'
-        : 'Disconnected';
+            ? 'Connecting'
+            : connectionStatus == ConnectionStatus.reconnecting
+                ? 'Reconnecting'
+                : 'Disconnected';
 
-    final events = [
-      AlertEvent(
-        message: 'Vehicle detected',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 1)),
-        category: 'danger',
-      ),
-      AlertEvent(
-        message: 'John recognized',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
-        category: 'face',
-      ),
-      AlertEvent(
-        message: 'Sign translated: "Need help"',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 8)),
-        category: 'sign',
-      ),
-    ];
+    final statusColor = connectionStatus == ConnectionStatus.connected
+        ? Colors.greenAccent
+        : connectionStatus == ConnectionStatus.disconnected
+            ? Colors.redAccent
+            : Colors.amberAccent;
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/emergency'),
-        icon: const Icon(Icons.warning_amber_rounded),
-        label: const Text('SOS'),
-      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          children: [
+            // ─── Top Bar ─────────────────────────────────────
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
                 children: [
-                  const Text(
-                    'Sentinel Companion',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
+                  // Connection status chip
+                  StatusChip(label: statusLabel, color: statusColor),
+                  const SizedBox(width: 10),
+                  // Controller IP
+                  Expanded(
+                    child: Text(
+                      'IP $controllerIpValue',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white54,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  Row(
-                    children: [
-                      StatusChip(
-                        label: statusLabel,
-                        color: connectionStatus == ConnectionStatus.connected
-                            ? Colors.greenAccent
-                            : Colors.amberAccent,
+                  // WebRTC indicator
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'WebRTC',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white60,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        tooltip: 'Settings',
-                        icon: const Icon(Icons.settings, color: Colors.white70),
-                        onPressed: () => context.push('/settings'),
-                      ),
-                    ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Settings
+                  IconButton(
+                    tooltip: 'Settings',
+                    icon: const Icon(Icons.settings, color: Colors.white70, size: 22),
+                    onPressed: () => context.push('/settings'),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              GlassCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+
+            // ─── Status Bar ──────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: GlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                borderRadius: const BorderRadius.all(Radius.circular(16)),
+                elevation: 0,
+                child: Row(
                   children: [
-                    const Text(
-                      'Controller Status',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                    // State / Alert from backend
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'State · ${_modeLabel(activeMode)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white38,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            hazardState,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: hazardState.toLowerCase().contains('alert')
+                                  ? Colors.redAccent
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Frame age placeholder
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        _DashboardInfoTile(
-                          title: 'Controller IP',
-                          value: controllerIpValue,
-                        ),
-                        _DashboardInfoTile(title: 'WebRTC', value: 'Active'),
-                        _DashboardInfoTile(title: 'Battery', value: '94%'),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    FutureBuilder<String?>(
-                      future: NetworkInfo().getWifiIP(),
-                      builder: (context, snapshot) {
-                        final deviceIp =
-                            snapshot.connectionState == ConnectionState.done
-                            ? (snapshot.data ?? 'Unknown')
-                            : '...';
-                        return Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'This device IP',
-                              style: Theme.of(context).textTheme.bodyLarge
-                                  ?.copyWith(color: Colors.white54),
-                            ),
-                            Text(
-                              deviceIp,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-              Expanded(
-                child: GridView.count(
-                  crossAxisCount: 1,
-                  childAspectRatio: 3,
-                  mainAxisSpacing: 16,
-                  children: [
-                    _ModeCard(
-                      icon: Icons.shield,
-                      title: 'Danger Detection',
-                      subtitle: 'Monitor nearby hazards in real time',
-                      color: Colors.redAccent,
-                      route: '/danger',
-                      mode: 'danger',
-                    ),
-                    _ModeCard(
-                      icon: Icons.face_retouching_natural,
-                      title: 'Face Recognition',
-                      subtitle: 'Identify known people quickly',
-                      color: Colors.blueAccent,
-                      route: '/face',
-                      mode: 'face',
-                    ),
-                    _ModeCard(
-                      icon: Icons.sign_language,
-                      title: 'Sign Language',
-                      subtitle: 'Translate gestures to text and speech',
-                      color: Colors.greenAccent,
-                      route: '/sign',
-                      mode: 'sign',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Recent events',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              GlassCard(
-                child: Column(
-                  children: events
-                      .map(
-                        (event) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                event.message,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                              Text(
-                                '${event.timestamp.hour}:${event.timestamp.minute.toString().padLeft(2, '0')}',
-                                style: const TextStyle(color: Colors.white54),
-                              ),
-                            ],
+                        const Text(
+                          'frame-age',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      )
-                      .toList(),
+                        const SizedBox(height: 2),
+                        Text(
+                          frameAge,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // ─── Main Camera Feed ────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        width: 1,
+                      ),
+                    ),
+                    child: const LiveCameraPreview(height: null),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // ─── Mode Switcher Circles ───────────────────────
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _ModeCircleButton(
+                    label: 'Danger\nDetection',
+                    icon: Icons.shield,
+                    isActive: activeMode == 'danger',
+                    activeColor: Colors.redAccent,
+                    onTap: () => _switchMode('danger'),
+                  ),
+                  _ModeCircleButton(
+                    label: 'Sign\nLanguage',
+                    icon: Icons.sign_language,
+                    isActive: activeMode == 'sign',
+                    onTap: isAlert ? null : () => _switchMode('sign'),
+                  ),
+                  _ModeCircleButton(
+                    label: 'Face\nRecognition',
+                    icon: Icons.face_retouching_natural,
+                    isActive: activeMode == 'face',
+                    onTap: isAlert ? null : () => _switchMode('face'),
+                  ),
+                  _ModeCircleButton(
+                    label: 'Image\nCaptioning',
+                    icon: Icons.image_search,
+                    isActive: activeMode == 'caption',
+                    onTap: isAlert ? null : () => _switchMode('caption'),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 6),
+          ],
         ),
       ),
     );
   }
 }
 
-class _DashboardInfoTile extends StatelessWidget {
-  final String title;
-  final String value;
+// ─── Mode Circle Button Widget ───────────────────────────────────────────────
 
-  const _DashboardInfoTile({required this.title, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: Theme.of(
-            context,
-          ).textTheme.labelLarge?.copyWith(color: Colors.white54),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-      ],
-    );
-  }
-}
-
-class _ModeCard extends ConsumerWidget {
+class _ModeCircleButton extends StatelessWidget {
+  final String label;
   final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final String route;
-  final String mode;
+  final bool isActive;
+  final VoidCallback? onTap;
+  final Color? activeColor;
 
-  const _ModeCard({
+  const _ModeCircleButton({
+    required this.label,
     required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.route,
-    required this.mode,
+    required this.isActive,
+    required this.onTap,
+    this.activeColor,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return GlassCard(
-      child: Row(
+  Widget build(BuildContext context) {
+    final bool isEnabled = onTap != null;
+    final Color effectiveActiveColor =
+        activeColor ?? Theme.of(context).colorScheme.primary;
+    
+    final Color borderColor = isActive
+        ? effectiveActiveColor
+        : isEnabled
+            ? Colors.white.withValues(alpha: 0.25)
+            : Colors.white.withValues(alpha: 0.08);
+
+    final Color bgColor = isActive
+        ? effectiveActiveColor.withValues(alpha: 0.15)
+        : Colors.transparent;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 70,
-            height: 70,
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            width: 68,
+            height: 68,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(20),
+              shape: BoxShape.circle,
+              color: bgColor,
+              border: Border.all(color: borderColor, width: 2),
             ),
-            child: Icon(icon, size: 36, color: color),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: Colors.white70)),
-              ],
+            child: Icon(
+              icon,
+              size: 28,
+              color: isActive
+                  ? effectiveActiveColor
+                  : isEnabled
+                      ? Colors.white70
+                      : Colors.white24,
             ),
           ),
-          ElevatedButton(
-            onPressed: () {
-              final session = ref.read(controllerSessionProvider);
-              session.webSocket.send({
-                'type': 'set_mode',
-                'mode': mode,
-              });
-              context.push(route);
-            },
-            child: const Text('Enter'),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              color: isActive
+                  ? effectiveActiveColor
+                  : isEnabled
+                      ? Colors.white60
+                      : Colors.white24,
+              height: 1.3,
+            ),
           ),
         ],
       ),
