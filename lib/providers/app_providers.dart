@@ -17,8 +17,8 @@ final audioQueueProvider = Provider<AudioQueueManager>((ref) {
   return manager;
 });
 
-final controllerIpProvider = StateProvider<String>((ref) => '192.168.1.10');
-final controllerPortProvider = StateProvider<int>((ref) => 8765);
+final controllerIpProvider = StateProvider<String>((ref) => '192.168.1.39');
+final controllerPortProvider = StateProvider<int>((ref) => 8080);
 final webrtcStunServerProvider = StateProvider<String>(
   (ref) => 'stun:stun.l.google.com:19302',
 );
