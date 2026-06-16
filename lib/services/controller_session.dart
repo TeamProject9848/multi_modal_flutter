@@ -71,7 +71,6 @@ class ControllerSession {
   }
 
   Future<void> _handleMessage(Map<String, dynamic> message) async {
-    debugPrint('WS MESSAGE: $message');
 
     // ── Extract state & frame_age from ANY message ──────────────
     // The backend may embed these fields in various message types,
@@ -111,6 +110,17 @@ class ControllerSession {
     onHazardStateChanged?.call(label);
     // Danger alert overrides whatever mode the UI is in
     onModeOverride?.call('danger');
+    break;
+
+  case 'status':
+    final state = message['state'];
+    if (state is String && state.isNotEmpty) {
+      onHazardStateChanged?.call(state);
+    }
+    final statusFrameAge = message['frame_age'];
+    if (statusFrameAge != null) {
+      onFrameAgeChanged?.call('${statusFrameAge}ms');
+    }
     break;
 
   case 'audio':
