@@ -7,6 +7,7 @@ import '../../providers/app_providers.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/status_chip.dart';
 import '../../widgets/live_camera_preview.dart';
+import '../../services/flutter_tts_service.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -49,6 +50,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void _switchMode(String mode) async {
     final current = ref.read(activeModeProvider);
     if (current == mode) return;
+    if (current == 'caption') {
+      FlutterTtsService.instance.stop();
+    }
     ref.read(activeModeProvider.notifier).state = mode;
     final session = ref.read(controllerSessionProvider);
     session.webSocket.send({
