@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import '../services/tts_service.dart';
+import '../services/sign_language_tts_service.dart';
 import '../models/connection_status.dart';
 import '../services/audio_queue_manager.dart';
 import '../services/controller_session.dart';
@@ -20,8 +21,39 @@ final audioQueueProvider = Provider<AudioQueueManager>((ref) {
   return manager;
 });
 
-final controllerIpProvider = StateProvider<String>((ref) => '192.168.1.39');
-final controllerPortProvider = StateProvider<int>((ref) => 8080);
+final ttsProvider = Provider<TtsService>((ref) {
+  final tts = TtsService();
+
+  tts.init();
+
+  return tts;
+});
+
+/// Hazard-state values that indicate an active alert / danger condition.
+/// When any of these are reported, sign-language TTS must stop immediately.
+const _alertHazardStates = {'alert', 'danger'};
+
+final signLanguageTtsProvider = Provider<SignLanguageTtsService>((ref) {
+  final service = SignLanguageTtsService();
+  service.init();
+
+  // Listen to hazard state changes and stop TTS on any alert/danger.
+  ref.listen<String>(hazardStateProvider, (previous, next) {
+    final normalised = next.toLowerCase();
+    if (_alertHazardStates.any((s) => normalised.contains(s))) {
+      service.stop();
+    }
+  });
+
+  ref.onDispose(() {
+    service.dispose();
+  });
+
+  return service;
+});
+
+final controllerIpProvider = StateProvider<String>((ref) => '192.168.1.8');
+final controllerPortProvider = StateProvider<int>((ref) => 8765);
 final webrtcStunServerProvider = StateProvider<String>(
   (ref) => 'stun:stun.l.google.com:19302',
 );
@@ -48,6 +80,7 @@ final hazardStateProvider = StateProvider<String>((ref) => 'Idle');
 
 /// Frame age reported by the backend.
 final frameAgeProvider = StateProvider<String>((ref) => '—');
+final signTranslationProvider = StateProvider<String>((ref) => '');
 final webrtcServiceProvider = Provider<WebRTCService>((ref) {
   final service = WebRTCService(
     stunServer: ref.watch(webrtcStunServerProvider),
@@ -80,6 +113,10 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
     },
     onFrameAgeChanged: (age) {
       ref.read(frameAgeProvider.notifier).state = age;
+    },
+
+    onSignTranslation: (text) {
+      ref.read(signTranslationProvider.notifier).state = text;
     },
   );
   Future.microtask(() {

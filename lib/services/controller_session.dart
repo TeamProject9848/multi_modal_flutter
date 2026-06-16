@@ -26,6 +26,7 @@ class ControllerSession {
     this.onHazardStateChanged,
     this.onModeOverride,
     this.onFrameAgeChanged,
+    this.onSignTranslation,
   });
 
   final WebSocketService webSocket;
@@ -48,6 +49,8 @@ class ControllerSession {
 
   /// Called when the backend reports a new frame age value.
   final ValueChanged<String>? onFrameAgeChanged;
+
+  final ValueChanged<String>? onSignTranslation;
 
   // ── Sentinel-mode suppression state ──────────────────────────────────────
   //
@@ -210,6 +213,23 @@ class ControllerSession {
     if (statusFrameAge != null) {
       onFrameAgeChanged?.call('${statusFrameAge}ms');
     }
+    break;
+
+  case 'sign_translation':
+
+    final text = message['text'];
+
+    if (text is String && text.isNotEmpty) {
+
+      debugPrint(
+        'SIGN TRANSLATION: $text',
+      );
+
+      onSignTranslation?.call(
+        text,
+      );
+    }
+
     break;
 
   case 'audio':

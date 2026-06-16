@@ -20,6 +20,8 @@ class SignLanguageScreen extends ConsumerWidget {
       }
     });
 
+    final currentTranslation = ref.watch(signTranslationProvider);
+
     final history = [
       SignTranslation(
         text: 'I need help',
@@ -33,11 +35,13 @@ class SignLanguageScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Sign Language')),
+
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.pushNamed(context, '/emergency'),
         icon: const Icon(Icons.warning),
         label: const Text('SOS'),
       ),
+
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(18),
@@ -48,48 +52,81 @@ class SignLanguageScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Camera translation',
+                      'Camera Translation',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 14),
-                    const LiveCameraPreview(),
-                    const SizedBox(height: 16),
+
+                    // Bigger camera preview
+                    SizedBox(
+                      height: 320,
+                      width: double.infinity,
+                      child: const LiveCameraPreview(),
+                    ),
+
+                    const SizedBox(height: 20),
+
                     const Text(
-                      'Current text',
+                      'Current Text',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 10),
-                    const Text(
-                      'I need help',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        currentTranslation.isEmpty
+                            ? 'Waiting for sign input...'
+                            : currentTranslation,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+
+                    const SizedBox(height: 14),
+
                     ElevatedButton.icon(
-                      onPressed: () {},
+                      onPressed: currentTranslation.isEmpty
+                          ? null
+                          : () async {
+                              await ref
+                                  .read(signLanguageTtsProvider)
+                                  .speak(currentTranslation);
+                            },
                       icon: const Icon(Icons.volume_up),
-                      label: const Text('Speak translation'),
+                      label: const Text('Speak Translation'),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(height: 18),
+
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Conversation history',
+                  'Conversation History',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
+
               const SizedBox(height: 12),
+
               Expanded(
                 child: ListView.separated(
                   itemCount: history.length,
@@ -97,6 +134,7 @@ class SignLanguageScreen extends ConsumerWidget {
                       const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final entry = history[index];
+
                     return GlassCard(
                       child: ListTile(
                         contentPadding: const EdgeInsets.all(0),
