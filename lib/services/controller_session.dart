@@ -7,6 +7,14 @@ import 'audio_queue_manager.dart';
 import 'websocket_service.dart';
 import 'webrtc_service.dart';
 
+/// Sentinel modes are modes in which the user interacts with the camera
+/// (hand gestures, face movements, etc.) as a core feature.
+///
+/// When one of these modes is active we must NOT re-raise a [PERSON_NEAR]
+/// alert for a person who has already been alerted and is still in frame —
+/// their natural movements are *expected* input, not a new threat.
+const _sentinelModes = {'sign', 'face'};
+
 class ControllerSession {
   ControllerSession({
     required this.webSocket,
@@ -14,6 +22,7 @@ class ControllerSession {
     required this.audioQueue,
     required this.controllerHttpBase,
     required this.onStatusChanged,
+    required this.getActiveMode,
     this.onHazardStateChanged,
     this.onModeOverride,
     this.onFrameAgeChanged,
@@ -25,6 +34,12 @@ class ControllerSession {
   final String controllerHttpBase;
   final ValueChanged<ConnectionStatus> onStatusChanged;
 
+  /// Returns the currently active mode string (e.g. 'danger', 'sign', 'face').
+  ///
+  /// This is injected so [ControllerSession] remains Riverpod-agnostic while
+  /// still being able to query the live mode at the moment an alert arrives.
+  final String Function() getActiveMode;
+
   /// Called when the backend reports a hazard-state change (e.g. "Alert", "Idle").
   final ValueChanged<String>? onHazardStateChanged;
 
@@ -33,6 +48,19 @@ class ControllerSession {
 
   /// Called when the backend reports a new frame age value.
   final ValueChanged<String>? onFrameAgeChanged;
+
+  // ── Sentinel-mode suppression state ──────────────────────────────────────
+  //
+  // Tracks person IDs that have already been alerted.
+  // When the active mode is a sentinel mode and we receive a PERSON_NEAR
+  // alert for an ID in this set, we know the same person is still in frame
+  // and the alert is suppressed (their movement is expected input, not a
+  // new threat).
+  //
+  // IDs are added on the first (real) alert and removed when the backend
+  // signals the person has left the frame via a 'person_left' message.
+  // The set is also cleared on disconnect / session dispose.
+  final Set<String> _alertedPersonIds = {};
 
   StreamSubscription<Map<String, dynamic>>? _messages;
   bool _signaling = false;
@@ -49,6 +77,12 @@ class ControllerSession {
     onStatusChanged(status);
     if (status == ConnectionStatus.connected) {
       _startVideo();
+    }
+    // Clear stale person-ID tracking on disconnect so we start fresh
+    // when the connection is re-established.
+    if (status == ConnectionStatus.disconnected ||
+        status == ConnectionStatus.reconnecting) {
+      _alertedPersonIds.clear();
     }
   }
 
@@ -98,6 +132,46 @@ class ControllerSession {
 
   case 'alert':
     debugPrint('ALERT KEY: ${message['key']}');
+
+    // ── Sentinel-mode person-alert suppression ───────────────
+    // If we're in a sentinel mode (sign language / face recognition)
+    // and the alert is PERSON_NEAR for a person we've already alerted
+    // (they stayed in frame), suppress re-triggering.
+    // We only suppress PERSON_NEAR — all other danger keys (obstacles,
+    // vehicles, dogs, stream loss) must always fire regardless of mode.
+    if (message['key'] == 'PERSON_NEAR') {
+      final personId = message['person_id'] as String?;
+      final activeMode = getActiveMode();
+      final isSentinelMode = _sentinelModes.contains(activeMode);
+
+      if (personId != null && isSentinelMode) {
+        if (_alertedPersonIds.contains(personId)) {
+          // Same person, still in frame, sentinel mode active —
+          // their movement/gestures are expected input, not a new threat.
+          debugPrint(
+            '[ControllerSession] Suppressed PERSON_NEAR re-alert '
+            'for person_id=$personId in sentinel mode "$activeMode"',
+          );
+          break; // Do NOT play audio, do NOT update hazard state
+        } else {
+          // First time seeing this person — alert normally, then register.
+          _alertedPersonIds.add(personId);
+          debugPrint(
+            '[ControllerSession] Registered person_id=$personId '
+            'for sentinel-mode suppression.',
+          );
+        }
+      } else if (personId != null && !isSentinelMode) {
+        // In danger mode: always alert, but also track the person ID so
+        // that if the user switches to a sentinel mode while they are still
+        // in frame we already know their ID and can suppress correctly.
+        _alertedPersonIds.add(personId);
+      }
+      // If personId is null the backend doesn't support ID tracking —
+      // fall through to normal alert behaviour unchanged.
+    }
+
+    // ── Normal alert handling ────────────────────────────────
     final asset = _alertAssets[message['key']];
     if (asset != null) {
       debugPrint('PLAYING ASSET: $asset');
@@ -110,6 +184,21 @@ class ControllerSession {
     onHazardStateChanged?.call(label);
     // Danger alert overrides whatever mode the UI is in
     onModeOverride?.call('danger');
+    break;
+
+  // ── Person left frame ────────────────────────────────────────
+  // When the backend signals that a tracked person has left the frame,
+  // remove them from the suppression set so that if they (or someone
+  // else with the same tracker ID) re-enters, an alert fires normally.
+  case 'person_left':
+    final leftId = message['person_id'] as String?;
+    if (leftId != null) {
+      _alertedPersonIds.remove(leftId);
+      debugPrint(
+        '[ControllerSession] person_id=$leftId left frame — '
+        'removed from sentinel suppression set.',
+      );
+    }
     break;
 
   case 'status':
@@ -150,6 +239,7 @@ class ControllerSession {
     webSocket.connectionStatus.removeListener(_handleStatus);
     await _messages?.cancel();
     await audioQueue.stop();
+    _alertedPersonIds.clear();
   }
 
   static const _alertAssets = <String, String>{

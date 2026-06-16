@@ -66,6 +66,9 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
     webRTC: ref.watch(webrtcServiceProvider),
     audioQueue: ref.watch(audioQueueProvider),
     controllerHttpBase: 'http://$ip:$port',
+    // Provide a live read of the active mode so ControllerSession can
+    // check it at alert-arrival time without holding a Riverpod ref.
+    getActiveMode: () => ref.read(activeModeProvider),
     onStatusChanged: (status) {
       ref.read(connectionStatusProvider.notifier).state = status;
     },
