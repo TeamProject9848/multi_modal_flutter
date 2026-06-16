@@ -6,6 +6,7 @@ import '../models/connection_status.dart';
 import 'audio_queue_manager.dart';
 import 'websocket_service.dart';
 import 'webrtc_service.dart';
+import 'flutter_tts_service.dart';
 
 /// Sentinel modes are modes in which the user interacts with the camera
 /// (hand gestures, face movements, etc.) as a core feature.
@@ -112,6 +113,9 @@ class ControllerSession {
     final msgState = message['state'];
     if (msgState is String && msgState.isNotEmpty) {
       onHazardStateChanged?.call(msgState);
+      if (msgState.toLowerCase().contains('alert')) {
+        await FlutterTtsService.instance.stop();
+      }
     }
     final frameAge = message['frame_age'];
     if (frameAge != null) {
@@ -132,6 +136,7 @@ class ControllerSession {
 
   case 'alert':
     debugPrint('ALERT KEY: ${message['key']}');
+    await FlutterTtsService.instance.stop();
 
     // ── Sentinel-mode person-alert suppression ───────────────
     // If we're in a sentinel mode (sign language / face recognition)
@@ -205,6 +210,9 @@ class ControllerSession {
     final state = message['state'];
     if (state is String && state.isNotEmpty) {
       onHazardStateChanged?.call(state);
+      if (state.toLowerCase().contains('alert')) {
+        await FlutterTtsService.instance.stop();
+      }
     }
     final statusFrameAge = message['frame_age'];
     if (statusFrameAge != null) {
@@ -231,6 +239,19 @@ class ControllerSession {
 
   case 'audio_stop':
     await audioQueue.stop();
+    break;
+
+  case 'flutter_tts':
+    final text = message['text'] as String?;
+    final activeMode = getActiveMode();
+    final hazardState = message['state'] as String? ?? '';
+    final isAlert = hazardState.toLowerCase().contains('alert');
+    if (text != null && activeMode == 'caption' && !isAlert) {
+      await FlutterTtsService.instance.speakCaption(text);
+    } else {
+      debugPrint('[ControllerSession] Ignored flutter_tts message (mode=$activeMode, isAlert=$isAlert, text=$text)');
+    }
+    onModeOverride?.call('danger');
     break;
 }
   }

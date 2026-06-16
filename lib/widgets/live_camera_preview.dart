@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -14,13 +17,23 @@ class LiveCameraPreview extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _Preview(service: ref.watch(webrtcServiceProvider), height: height);
+    final activeMode = ref.watch(activeModeProvider);
+    return _Preview(
+      service: ref.watch(webrtcServiceProvider),
+      height: height,
+      activeMode: activeMode,
+    );
   }
 }
 
 class _Preview extends StatefulWidget {
-  const _Preview({required this.service, this.height});
+  const _Preview({
+    required this.service,
+    required this.activeMode,
+    this.height,
+  });
 
+  final String activeMode;
   final WebRTCService service;
   final double? height;
 
@@ -30,19 +43,32 @@ class _Preview extends StatefulWidget {
 
 class _PreviewState extends State<_Preview> {
   final RTCVideoRenderer _renderer = RTCVideoRenderer();
+  final GlobalKey _boundaryKey = GlobalKey();
   StreamSubscription<MediaStream>? _subscription;
   bool _ready = false;
+  Uint8List? _frozenBytes;
 
   @override
   void initState() {
     super.initState();
     _attach();
+    if (widget.activeMode == 'caption') {
+      _captureFrame();
+    }
   }
 
   @override
   void didUpdateWidget(covariant _Preview oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.service != widget.service) _attach();
+
+    if (widget.activeMode == 'caption' && oldWidget.activeMode != 'caption') {
+      _captureFrame();
+    } else if (widget.activeMode != 'caption' && oldWidget.activeMode == 'caption') {
+      setState(() {
+        _frozenBytes = null;
+      });
+    }
   }
 
   Future<void> _attach() async {
@@ -58,6 +84,25 @@ class _PreviewState extends State<_Preview> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _captureFrame() async {
+    try {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
+      final boundary = _boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary != null) {
+        final image = await boundary.toImage(pixelRatio: 1.0);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData != null && mounted) {
+          setState(() {
+            _frozenBytes = byteData.buffer.asUint8List();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Failed to capture frame: $e");
+    }
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
@@ -69,19 +114,29 @@ class _PreviewState extends State<_Preview> {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
-      child: SizedBox(
-        height: widget.height,
-        width: double.infinity,
-        child: _renderer.srcObject == null
-            ? const ColoredBox(
-                color: Colors.white10,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : RTCVideoView(
-                _renderer,
-                mirror: false,
-                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-              ),
+      child: RepaintBoundary(
+        key: _boundaryKey,
+        child: SizedBox(
+          height: widget.height,
+          width: double.infinity,
+          child: _frozenBytes != null
+              ? Image.memory(
+                  _frozenBytes!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: widget.height,
+                )
+              : (_renderer.srcObject == null
+                  ? const ColoredBox(
+                      color: Colors.white10,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : RTCVideoView(
+                      _renderer,
+                      mirror: false,
+                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    )),
+        ),
       ),
     );
   }
