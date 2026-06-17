@@ -86,7 +86,7 @@ class ControllerSession {
     final status = webSocket.connectionStatus.value;
     onStatusChanged(status);
     if (status == ConnectionStatus.connected) {
-      startVideo(useFrontCamera: getActiveMode() == 'face');
+      startVideo();
     }
     // Clear stale person-ID tracking on disconnect so we start fresh
     // when the connection is re-established.
@@ -96,11 +96,11 @@ class ControllerSession {
     }
   }
 
-  Future<void> startVideo({bool useFrontCamera = false}) async {
+  Future<void> startVideo() async {
     if (_signaling) return;
     _signaling = true;
     try {
-      await webRTC.initialize(useFrontCamera: useFrontCamera);
+      await webRTC.initialize();
       final offer = await webRTC.createOffer();
       webSocket.send({
         'type': 'webrtc_offer',

@@ -170,9 +170,6 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
     ref.read(signTranslationProvider.notifier).state = '';
     final wasFace = previous == 'face';
     final isFace = next == 'face';
-    if (previous != null && wasFace != isFace) {
-      session.startVideo(useFrontCamera: isFace);
-    }
     if (wasFace || isFace) {
       ref.read(faceStateProvider.notifier).updateState(FaceState());
       FaceTtsService.instance.stop();
