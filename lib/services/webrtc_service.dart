@@ -13,6 +13,7 @@ class WebRTCService {
 
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
+  bool _isFrontCamera = false;
 
   Stream<MediaStream> get localStream => _localStreamController.stream;
   Stream<RTCPeerConnectionState> get connectionState =>
@@ -20,6 +21,13 @@ class WebRTCService {
   MediaStream? get currentStream => _localStream;
 
   Future<void> initialize({bool useFrontCamera = false}) async {
+    if (_localStream != null && _isFrontCamera != useFrontCamera) {
+      for (final track in _localStream!.getTracks()) {
+        await track.stop();
+      }
+      await _localStream!.dispose();
+      _localStream = null;
+    }
     if (_localStream == null) {
       await _createMediaStream(useFrontCamera: useFrontCamera);
     }
@@ -30,6 +38,7 @@ class WebRTCService {
     final stream = _localStream;
     if (stream != null && stream.getVideoTracks().isNotEmpty) {
       await Helper.switchCamera(stream.getVideoTracks()[0]);
+      _isFrontCamera = !_isFrontCamera;
     }
   }
 
@@ -44,6 +53,7 @@ class WebRTCService {
       },
     };
     _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    _isFrontCamera = useFrontCamera;
     _localStreamController.add(_localStream!);
   }
 

@@ -73,6 +73,7 @@ class ControllerSession {
 
   StreamSubscription<Map<String, dynamic>>? _messages;
   bool _signaling = false;
+  String _hazardState = 'Idle';
 
   Future<void> start() async {
     _messages = webSocket.messages.listen(_handleMessage);
@@ -85,7 +86,7 @@ class ControllerSession {
     final status = webSocket.connectionStatus.value;
     onStatusChanged(status);
     if (status == ConnectionStatus.connected) {
-      _startVideo();
+      startVideo(useFrontCamera: getActiveMode() == 'face');
     }
     // Clear stale person-ID tracking on disconnect so we start fresh
     // when the connection is re-established.
@@ -95,11 +96,11 @@ class ControllerSession {
     }
   }
 
-  Future<void> _startVideo() async {
+  Future<void> startVideo({bool useFrontCamera = false}) async {
     if (_signaling) return;
     _signaling = true;
     try {
-      await webRTC.initialize();
+      await webRTC.initialize(useFrontCamera: useFrontCamera);
       final offer = await webRTC.createOffer();
       webSocket.send({
         'type': 'webrtc_offer',
@@ -120,9 +121,11 @@ class ControllerSession {
     // not just a dedicated "state" message.
     final msgState = message['state'];
     if (msgState is String && msgState.isNotEmpty) {
+      _hazardState = msgState;
       onHazardStateChanged?.call(msgState);
       if (msgState.toLowerCase().contains('alert')) {
         await FlutterTtsService.instance.stop();
+        await FaceTtsService.instance.stop();
       }
     }
     final frameAge = message['frame_age'];
@@ -145,6 +148,7 @@ class ControllerSession {
   case 'alert':
     debugPrint('ALERT KEY: ${message['key']}');
     await FlutterTtsService.instance.stop();
+    await FaceTtsService.instance.stop();
 
     // ── Sentinel-mode person-alert suppression ───────────────
     // If we're in a sentinel mode (sign language / face recognition)
@@ -194,6 +198,7 @@ class ControllerSession {
       );
     }
     final label = _alertLabels[message['key']] ?? 'Alert';
+    _hazardState = label;
     onHazardStateChanged?.call(label);
     // Danger alert overrides whatever mode the UI is in
     onModeOverride?.call('danger');
@@ -217,9 +222,11 @@ class ControllerSession {
   case 'status':
     final state = message['state'];
     if (state is String && state.isNotEmpty) {
+      _hazardState = state;
       onHazardStateChanged?.call(state);
       if (state.toLowerCase().contains('alert')) {
         await FlutterTtsService.instance.stop();
+        await FaceTtsService.instance.stop();
       }
     }
     final statusFrameAge = message['frame_age'];
@@ -251,7 +258,10 @@ class ControllerSession {
     final msgKey = message['message_key'] as String?;
     final text = message['text'] as String?;
     
-    if (msgKey != null) {
+    final normalised = _hazardState.toLowerCase();
+    final isAlert = normalised.contains('alert') || normalised.contains('danger');
+
+    if (msgKey != null && !isAlert) {
       final assetPath = _facePromptAssets[msgKey];
       if (assetPath != null) {
         await audioQueue.playLocal(assetPath, priority: AudioPriority.high);

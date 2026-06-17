@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/tts_service.dart';
 import '../services/sign_language_tts_service.dart';
+import '../services/face_tts_service.dart';
 import '../models/connection_status.dart';
 import '../services/audio_queue_manager.dart';
 import '../services/controller_session.dart';
@@ -95,10 +96,6 @@ final webrtcServiceProvider = Provider<WebRTCService>((ref) {
 });
 
 final controllerSessionProvider = Provider<ControllerSession>((ref) {
-  // Clear sign translation when active mode changes
-  ref.listen<String>(activeModeProvider, (previous, next) {
-    ref.read(signTranslationProvider.notifier).state = '';
-  });
   final ip = ref.watch(controllerIpProvider);
   final port = ref.watch(controllerPortProvider);
   final session = ControllerSession(
@@ -167,6 +164,17 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
       );
     },
   );
+
+  // Clear sign translation and handle camera stream switching when active mode changes
+  ref.listen<String>(activeModeProvider, (previous, next) {
+    ref.read(signTranslationProvider.notifier).state = '';
+    session.startVideo(useFrontCamera: next == 'face');
+    if (previous == 'face' || next == 'face') {
+      ref.read(faceStateProvider.notifier).updateState(FaceState());
+      FaceTtsService.instance.stop();
+    }
+  });
+
   Future.microtask(() {
     session.start();
   });
