@@ -166,11 +166,11 @@ class FaceRecognitionScreen extends ConsumerWidget {
                                 );
                                 
                                 if (name != null && name.trim().isNotEmpty) {
-                                ref.read(controllerSessionProvider).webSocket.send({
-                                  'type': 'face_intent',
-                                  'intent': 'start_registration',
+                                  ref.read(controllerSessionProvider).webSocket.send({
+                                    'type': 'face_intent',
+                                    'intent': 'start_registration',
                                     'metadata': {'person_id': name.trim()},
-                                });
+                                  });
                                 }
                               },
                               icon: const Icon(Icons.person_add),
