@@ -11,6 +11,9 @@ import '../services/webrtc_service.dart';
 import 'active_mode_provider.dart';
 export 'active_mode_provider.dart';
 
+import 'face_state_provider.dart';
+export 'face_state_provider.dart';
+
 final preferencesProvider = FutureProvider<SharedPreferences>((ref) async {
   return SharedPreferences.getInstance();
 });
@@ -117,6 +120,43 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
 
     onSignTranslation: (text) {
       ref.read(signTranslationProvider.notifier).state = text;
+    },
+    onFaceEvent: (data) {
+      final eventType = data['event_type'] as String?;
+      final messageKey = data['message_key'] as String?;
+      final sessionId = data['session_id'] as String?;
+      final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
+      final text = data['text'] as String?;
+
+      final currentState = ref.read(faceStateProvider);
+      String status = currentState.status;
+      if (eventType == 'PROMPT' || eventType == 'REGISTRATION_PROGRESS') {
+        status = 'registering';
+      } else if (eventType == 'REGISTRATION_COMPLETE') {
+        status = 'complete';
+      } else if (eventType == 'REGISTRATION_FAILED') {
+        status = 'failed';
+      } else if (eventType == 'IDENTIFIED') {
+        status = 'identified';
+      }
+
+      String? personId;
+      double? confidence;
+      if (eventType == 'IDENTIFIED') {
+        personId = metadata['person_name'] ?? metadata['person_id'] as String?;
+        final confVal = metadata['confidence'];
+        if (confVal is num) confidence = confVal.toDouble();
+      }
+
+      ref.read(faceStateProvider.notifier).updateState(
+        FaceState(
+          status: status,
+          message: text ?? messageKey,
+          sessionId: sessionId,
+          personId: personId ?? currentState.personId,
+          confidence: confidence ?? currentState.confidence,
+        )
+      );
     },
   );
   Future.microtask(() {

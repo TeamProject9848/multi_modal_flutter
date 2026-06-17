@@ -28,6 +28,7 @@ class ControllerSession {
     this.onModeOverride,
     this.onFrameAgeChanged,
     this.onSignTranslation,
+    this.onFaceEvent,
   });
 
   final WebSocketService webSocket;
@@ -52,6 +53,9 @@ class ControllerSession {
   final ValueChanged<String>? onFrameAgeChanged;
 
   final ValueChanged<String>? onSignTranslation;
+
+  /// Called when a face event arrives from the backend.
+  final ValueChanged<Map<String, dynamic>>? onFaceEvent;
 
   // ── Sentinel-mode suppression state ──────────────────────────────────────
   //
@@ -238,6 +242,10 @@ class ControllerSession {
       );
     }
 
+    break;
+
+  case 'face_event':
+    onFaceEvent?.call(message);
     break;
 
   case 'audio':
