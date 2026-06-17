@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/connection_status.dart';
 import 'audio_queue_manager.dart';
+import 'face_tts_service.dart';
 import 'websocket_service.dart';
 import 'webrtc_service.dart';
 import 'flutter_tts_service.dart';
