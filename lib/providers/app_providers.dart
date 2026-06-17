@@ -168,8 +168,12 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
   // Clear sign translation and handle camera stream switching when active mode changes
   ref.listen<String>(activeModeProvider, (previous, next) {
     ref.read(signTranslationProvider.notifier).state = '';
-    session.startVideo(useFrontCamera: next == 'face');
-    if (previous == 'face' || next == 'face') {
+    final wasFace = previous == 'face';
+    final isFace = next == 'face';
+    if (previous != null && wasFace != isFace) {
+      session.startVideo(useFrontCamera: isFace);
+    }
+    if (wasFace || isFace) {
       ref.read(faceStateProvider.notifier).updateState(FaceState());
       FaceTtsService.instance.stop();
     }
