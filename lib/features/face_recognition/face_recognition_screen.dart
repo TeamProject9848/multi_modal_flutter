@@ -24,6 +24,10 @@ class FaceRecognitionScreen extends ConsumerWidget {
         title: const Text('Face Recognition'),
         actions: [
           IconButton(
+            onPressed: () => ref.read(webrtcServiceProvider).switchCamera(),
+            icon: const Icon(Icons.flip_camera_ios),
+          ),
+          IconButton(
             onPressed: () => Navigator.pushNamed(context, '/face/list'),
             icon: const Icon(Icons.list),
           ),

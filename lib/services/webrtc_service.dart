@@ -26,6 +26,13 @@ class WebRTCService {
     await _createPeerConnection();
   }
 
+  Future<void> switchCamera() async {
+    final stream = _localStream;
+    if (stream != null && stream.getVideoTracks().isNotEmpty) {
+      await Helper.switchCamera(stream.getVideoTracks()[0]);
+    }
+  }
+
   Future<void> _createMediaStream({required bool useFrontCamera}) async {
     final constraints = <String, dynamic>{
       'audio': false,
