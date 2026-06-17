@@ -246,6 +246,20 @@ class ControllerSession {
 
   case 'face_event':
     onFaceEvent?.call(message);
+    
+    final msgKey = message['message_key'] as String?;
+    final text = message['text'] as String?;
+    
+    if (msgKey != null) {
+      final assetPath = _facePromptAssets[msgKey];
+      if (assetPath != null) {
+        await audioQueue.playLocal(assetPath, priority: AudioPriority.high);
+      } else if (msgKey == 'identify_success' || msgKey == 'identify_unknown') {
+        if (text != null && text.isNotEmpty) {
+          await FaceTtsService.instance.speak(text);
+        }
+      }
+    }
     break;
 
   case 'audio':
@@ -298,6 +312,14 @@ class ControllerSession {
     'VEHICLE_NEAR': 'assets/audio/vehicle_alert.mp3',
     'DOG_NEAR': 'assets/audio/dog_alert.mp3',
     'STREAM_LOST': 'assets/audio/danger_alert.mp3',
+  };
+
+  static const _facePromptAssets = <String, String>{
+    'registration_start': 'assets/audio/prompts/look_straight.wav',
+    'registration_left': 'assets/audio/prompts/turn_left.wav',
+    'registration_right': 'assets/audio/prompts/turn_right.wav',
+    'registration_complete': 'assets/audio/prompts/registration_complete.wav',
+    'registration_failed': 'assets/audio/prompts/registration_left.wav',
   };
 
   static const _alertLabels = <String, String>{
