@@ -92,6 +92,10 @@ final webrtcServiceProvider = Provider<WebRTCService>((ref) {
 });
 
 final controllerSessionProvider = Provider<ControllerSession>((ref) {
+  // Clear sign translation when active mode changes
+  ref.listen<String>(activeModeProvider, (previous, next) {
+    ref.read(signTranslationProvider.notifier).state = '';
+  });
   final ip = ref.watch(controllerIpProvider);
   final port = ref.watch(controllerPortProvider);
   final session = ControllerSession(
@@ -110,6 +114,10 @@ final controllerSessionProvider = Provider<ControllerSession>((ref) {
     },
     onModeOverride: (mode) {
       ref.read(activeModeProvider.notifier).state = mode;
+      ref.read(websocketServiceProvider).send({
+        'type': 'set_mode',
+        'mode': mode,
+      });
     },
     onFrameAgeChanged: (age) {
       ref.read(frameAgeProvider.notifier).state = age;
