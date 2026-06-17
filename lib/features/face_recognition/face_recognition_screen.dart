@@ -139,11 +139,39 @@ class FaceRecognitionScreen extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: isRegistering ? null : () {
+                              onPressed: isRegistering ? null : () async {
+                                final name = await showDialog<String>(
+                                  context: context,
+                                  builder: (context) {
+                                    final controller = TextEditingController();
+                                    return AlertDialog(
+                                      title: const Text('Enter Name'),
+                                      content: TextField(
+                                        controller: controller,
+                                        decoration: const InputDecoration(hintText: 'Person Name'),
+                                        autofocus: true,
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () => Navigator.pop(context, controller.text),
+                                          child: const Text('Register'),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                                
+                                if (name != null && name.trim().isNotEmpty) {
                                 ref.read(controllerSessionProvider).webSocket.send({
                                   'type': 'face_intent',
                                   'intent': 'start_registration',
+                                    'metadata': {'person_id': name.trim()},
                                 });
+                                }
                               },
                               icon: const Icon(Icons.person_add),
                               label: const Text('Register'),
